@@ -42,6 +42,10 @@ contract BookSellerTest is Test {
         // 檢查 tokenURI 是否正確
         string memory uri = bookNft.tokenURI(0);
         assertEq(uri, book1);
+
+        // 檢查 buyer 是否擁有該書籍
+        bool hasBook = bookNft.getHasBookByUri(buyer, book1);
+        assertTrue(hasBook);
     }
 
     function testBuyBookFailsIfNotEnoughEth() public {

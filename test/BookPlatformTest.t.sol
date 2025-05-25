@@ -19,6 +19,23 @@ contract BookPlatformTest is Test {
     uint256 public constant BOOK_PRICE = 0.01 ether;
     uint256 public constant PLATFORM_FEE = 0.001 ether;
 
+    modifier listOneBook() {
+        vm.prank(seller);
+        bookSeller.addBook(METADATA_URI, BOOK_PRICE);
+        _;
+    }
+
+    modifier fundUser() {
+        vm.deal(user, 1 ether);
+        _;
+    }
+
+    modifier userBoughtBook() {
+        vm.prank(user);
+        bookSeller.buyBook{value: BOOK_PRICE}(0);
+        _;
+    }
+
     function setUp() public {
         // 部署 NFT 合約並設置權限
         vm.startPrank(seller);
@@ -32,18 +49,10 @@ contract BookPlatformTest is Test {
         ebookPlatform = new BookPlatform(address(bookNft), PLATFORM_FEE);
     }
 
-    function testPurchaseAndUnlockBookFlow() public {
-        // 上架一本書
-        vm.prank(seller);
-        bookSeller.addBook(METADATA_URI, BOOK_PRICE);
-
-        vm.deal(user, 1 ether);
-
-        vm.prank(user);
-        bookSeller.buyBook{value: BOOK_PRICE}(0);
-
-        // 驗證 NFT 擁有者
-        assertEq(bookNft.ownerOf(0), user);
+    function testPurchaseAndUnlockBookFlow() public listOneBook fundUser userBoughtBook {
+        // 驗證使用者是否擁有該書
+        bool hasBook = ebookPlatform.hasBook(user, METADATA_URI);
+        assertTrue(hasBook, "User should own the book");
 
         // 使用者支付平台費用解鎖
         vm.prank(user);
@@ -54,30 +63,48 @@ contract BookPlatformTest is Test {
         assertTrue(unlocked, "User should have unlocked access to the book");
     }
 
-    function testRevertIfNotEnoughFee() public {
-        vm.prank(seller);
-        bookSeller.addBook(METADATA_URI, BOOK_PRICE);
-        vm.deal(user, 1 ether);
-        vm.prank(user);
-        bookSeller.buyBook{value: BOOK_PRICE}(0);
-
+    function testRevertIfNotEnoughFee() public listOneBook fundUser userBoughtBook {
         vm.prank(user);
         vm.expectRevert("Insufficient usage fee");
         ebookPlatform.payToUnlock{value: 0.0009 ether}(0);
     }
 
-    function testRevertIfNotOwnerOfNFT() public {
-        vm.prank(seller);
-        bookSeller.addBook(METADATA_URI, BOOK_PRICE);
-        vm.deal(user, 1 ether);
-        vm.prank(user);
-        bookSeller.buyBook{value: BOOK_PRICE}(0);
-
-        // address 嘗試解鎖不是自己的書
+    function testRevertIfNotOwnerOfNFT() public listOneBook fundUser userBoughtBook {
+        // attacker 嘗試解鎖不是自己的書
         address attacker = address(0xCAFE);
         vm.deal(attacker, 1 ether);
         vm.prank(attacker);
         vm.expectRevert();
         ebookPlatform.payToUnlock{value: PLATFORM_FEE}(0);
+    }
+
+    function testPlatformCanWithdraw() public listOneBook fundUser userBoughtBook {
+        // User pays platform fee to unlock
+        vm.prank(user);
+        ebookPlatform.payToUnlock{value: PLATFORM_FEE}(0);
+
+        // Verify platform balance
+        uint256 platformBalance = address(ebookPlatform).balance;
+        assertEq(platformBalance, PLATFORM_FEE, "Platform balance should equal the fee collected");
+
+        // Platform owner withdraws funds
+        vm.prank(platformOwner);
+        ebookPlatform.withdraw();
+
+        // Verify platform balance is zero
+        platformBalance = address(ebookPlatform).balance;
+        assertEq(platformBalance, 0, "Platform balance should be zero after withdrawal");
+
+        // Verify platform owner received the funds
+        uint256 ownerBalance = platformOwner.balance;
+        assertEq(ownerBalance, PLATFORM_FEE, "Platform owner should receive the withdrawn funds");
+    }
+
+    function testOwnerCanSetNewUsageFee() public {
+        vm.prank(platformOwner);
+        ebookPlatform.setUsageFee(0.02 ether);
+
+        uint256 newFee = ebookPlatform.getUsageFee();
+        assertEq(newFee, 0.02 ether);
     }
 }

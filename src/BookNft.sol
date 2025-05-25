@@ -8,6 +8,8 @@ contract BookNft is ERC721, Ownable {
     uint256 public s_tokenCounter;
     address private s_minter;
     mapping(uint256 => string) private s_tokenIdToUri;
+    // user => metadataUri => 是否擁有
+    mapping(address => mapping(string => bool)) public hasBookByUri;
 
     modifier onlyMinter() {
         require(msg.sender == s_minter, "Not authorized to mint");
@@ -26,9 +28,15 @@ contract BookNft is ERC721, Ownable {
         _safeMint(_to, s_tokenCounter);
         s_tokenIdToUri[s_tokenCounter] = _tokenUri;
         s_tokenCounter++;
+
+        hasBookByUri[_to][_tokenUri] = true; // 記錄擁有者和書籍 URI 的關係
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         return s_tokenIdToUri[tokenId];
+    }
+
+    function getHasBookByUri(address user, string memory tokenUri) external view returns (bool) {
+        return hasBookByUri[user][tokenUri];
     }
 }

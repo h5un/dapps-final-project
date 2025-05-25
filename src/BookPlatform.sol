@@ -4,7 +4,6 @@ pragma solidity 0.8.20;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {BookNft} from "./BookNft.sol";
-import {BookSeller} from "./BookSeller.sol";
 
 /**
  * BookPlatform 合約 - 驗證用戶擁有 NFT 並支付平台費用後解鎖書籍
@@ -22,7 +21,8 @@ contract BookPlatform is Ownable {
     }
 
     function payToUnlock(uint256 tokenId) external payable {
-        require(bookNft.ownerOf(tokenId) == msg.sender, "You don't own this book");
+        string memory uri = bookNft.tokenURI(tokenId);
+        require(hasBook(msg.sender, uri), "You don't own this book");
         require(msg.value >= usageFee, "Insufficient usage fee");
 
         hasPaid[msg.sender][tokenId] = true;
@@ -38,5 +38,13 @@ contract BookPlatform is Ownable {
 
     function withdraw() external onlyOwner {
         payable(owner()).transfer(address(this).balance);
+    }
+
+    function hasBook(address user, string memory metadataUri) public view returns (bool) {
+        return bookNft.getHasBookByUri(user, metadataUri);
+    }
+
+    function getUsageFee() external view returns (uint256) {
+        return usageFee;
     }
 }
